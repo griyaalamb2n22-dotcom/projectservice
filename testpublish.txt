@@ -1,0 +1,10 @@
+# 1. Publish
+dotnet publish -c Release -r win-x64 --self-contained false -o ./publish
+
+# 2. Install Windows Service
+sc create WorkRFToMSA binPath= "C:\Services\WorkRFToMSA\WorkRFToMSA.exe" start= auto
+sc description WorkRFToMSA "Sync RF Agent to MSA via ERF API"
+sc start WorkRFToMSA
+
+# 3. Cek status
+sc query WorkRFToMSA
