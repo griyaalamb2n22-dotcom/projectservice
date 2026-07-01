@@ -1,0 +1,1553 @@
+Bisa. Di Spring Boot, cara yang paling langsung adalah membuat project dengan dependency Spring for GraphQL, lalu menaruh schema di src/main/resources/graphql, dan membuat resolver dengan @QueryMapping atau @MutationMapping di class @Controller. Endpoint GraphQL default ada di /graphql, sedangkan GraphiQL bisa diaktifkan untuk testing saat development.
+
+Setup project
+Di Spring Initializr, pilih minimal dependency:
+
+Spring for GraphQL.
+
+Spring Web, kalau kamu mau expose API lewat HTTP dengan Spring MVC.
+
+Struktur project yang umum:
+
+text
+src
+ └─ main
+    ├─ java/com/example/demo
+    │   ├─ DemoApplication.java
+    │   └─ controller/BookController.java
+    └─ resources
+        ├─ application.properties
+        └─ graphql/schema.graphqls
+Spring Boot otomatis membaca file schema dengan ekstensi .graphqls atau .gqls di src/main/resources/graphql/**.
+
+Contoh di IntelliJ IDEA
+1. pom.xml
+xml
+<project xmlns="http://maven.apache.org/POM/4.0.0">
+    <modelVersion>4.0.0</modelVersion>
+
+    <groupId>com.example</groupId>
+    <artifactId>graphql-demo</artifactId>
+    <version>0.0.1-SNAPSHOT</version>
+    <name>graphql-demo</name>
+
+    <parent>
+        <groupId>org.springframework.boot</groupId>
+        <artifactId>spring-boot-starter-parent</artifactId>
+        <version>3.5.3</version>
+        <relativePath/>
+    </parent>
+
+    <properties>
+        <java.version>17</java.version>
+    </properties>
+
+    <dependencies>
+        <dependency>
+            <groupId>org.springframework.boot</groupId>
+            <artifactId>spring-boot-starter-graphql</artifactId>
+        </dependency>
+
+        <dependency>
+            <groupId>org.springframework.boot</groupId>
+            <artifactId>spring-boot-starter-web</artifactId>
+        </dependency>
+
+        <dependency>
+            <groupId>org.springframework.boot</groupId>
+            <artifactId>spring-boot-starter-test</artifactId>
+            <scope>test</scope>
+        </dependency>
+
+        <dependency>
+            <groupId>org.springframework.graphql</groupId>
+            <artifactId>spring-graphql-test</artifactId>
+            <scope>test</scope>
+        </dependency>
+    </dependencies>
+</project>
+Starter minimum yang dibutuhkan adalah spring-boot-starter-graphql, dan untuk transport HTTP kamu butuh starter web seperti spring-boot-starter-web.
+
+2. DemoApplication.java
+java
+package com.example.demo;
+
+import org.springframework.boot.SpringApplication;
+import org.springframework.boot.autoconfigure.SpringBootApplication;
+
+@SpringBootApplication
+public class DemoApplication {
+    public static void main(String[] args) {
+        SpringApplication.run(DemoApplication.class, args);
+    }
+}
+3. schema.graphqls
+Buat file di src/main/resources/graphql/schema.graphqls:
+
+graphql
+type Query {
+    hello(name: String!): String!
+}
+Schema memang wajib ada saat startup aplikasi GraphQL Spring Boot.
+
+4. BookController.java atau HelloController.java
+java
+package com.example.demo.controller;
+
+import org.springframework.graphql.data.method.annotation.Argument;
+import org.springframework.graphql.data.method.annotation.QueryMapping;
+import org.springframework.stereotype.Controller;
+
+@Controller
+public class HelloController {
+
+    @QueryMapping
+    public String hello(@Argument String name) {
+        return "Halo, " + name;
+    }
+}
+Spring Boot otomatis mendeteksi @Controller yang punya @QueryMapping dan mendaftarkannya sebagai GraphQL DataFetcher.
+
+5. application.properties
+text
+spring.graphql.graphiql.enabled=true
+GraphiQL bawaan Spring tersedia di /graphiql, tetapi default-nya nonaktif dan bisa diaktifkan lewat properti tersebut.
+
+Cara menjalankan
+Jalankan project dari IntelliJ IDEA lewat class DemoApplication. Setelah aktif, endpoint GraphQL default adalah POST /graphql, dan untuk UI testing kamu bisa buka /graphiql jika sudah diaktifkan.
+
+Contoh query di GraphiQL:
+
+graphql
+query {
+  hello(name: "Bella")
+}
+Hasil:
+
+json
+{
+  "data": {
+    "hello": "Halo, Bella"
+  }
+}
+Contoh CRUD sederhana
+Kalau kamu mau sekalian contoh yang lebih realistis, pakai in-memory list dulu.
+
+schema.graphqls
+graphql
+type Book {
+    id: ID!
+    title: String!
+    author: String!
+}
+
+type Query {
+    books: [Book!]!
+    bookById(id: ID!): Book
+}
+
+type Mutation {
+    addBook(title: String!, author: String!): Book!
+}
+Book.java
+java
+package com.example.demo.model;
+
+public class Book {
+    private String id;
+    private String title;
+    private String author;
+
+    public Book() {
+    }
+
+    public Book(String id, String title, String author) {
+        this.id = id;
+        this.title = title;
+        this.author = author;
+    }
+
+    public String getId() {
+        return id;
+    }
+
+    public void setId(String id) {
+        this.id = id;
+    }
+
+    public String getTitle() {
+        return title;
+    }
+
+    public void setTitle(String title) {
+        this.title = title;
+    }
+
+    public String getAuthor() {
+        return author;
+    }
+
+    public void setAuthor(String author) {
+        this.author = author;
+    }
+}
+BookController.java
+java
+package com.example.demo.controller;
+
+import com.example.demo.model.Book;
+import org.springframework.graphql.data.method.annotation.Argument;
+import org.springframework.graphql.data.method.annotation.MutationMapping;
+import org.springframework.graphql.data.method.annotation.QueryMapping;
+import org.springframework.stereotype.Controller;
+
+import java.util.ArrayList;
+import java.util.List;
+import java.util.UUID;
+
+@Controller
+public class BookController {
+
+    private final List<Book> books = new ArrayList<>();
+
+    @QueryMapping
+    public List<Book> books() {
+        return books;
+    }
+
+    @QueryMapping
+    public Book bookById(@Argument String id) {
+        return books.stream()
+                .filter(book -> book.getId().equals(id))
+                .findFirst()
+                .orElse(null);
+    }
+
+    @MutationMapping
+    public Book addBook(@Argument String title, @Argument String author) {
+        Book book = new Book(UUID.randomUUID().toString(), title, author);
+        books.add(book);
+        return book;
+    }
+}
+Untuk resolver, pendekatan anotasi yang umum adalah @QueryMapping untuk query dan @MutationMapping untuk mutation, dengan parameter memakai @Argument.
+
+Contoh mutation:
+
+graphql
+mutation {
+  addBook(title: "Spring Boot GraphQL", author: "Bella") {
+    id
+    title
+    author
+  }
+}
+Contoh query:
+
+graphql
+query {
+  books {
+    id
+    title
+    author
+  }
+}
+Catatan penting
+File schema sebaiknya diletakkan di src/main/resources/graphql/ agar terdeteksi otomatis.
+
+Endpoint default GraphQL adalah /graphql.
+
+Kalau nanti mau pakai database, tinggal tambah Spring Data JPA dan ganti list in-memory menjadi service + repository.
+
+Untuk development, GraphiQL memudahkan testing query tanpa Postman. GraphiQL default ada di /graphiql bila diaktifkan.
+
+Kalau kamu mau, saya bisa lanjut buatkan:
+
+versi lengkap dengan MySQL + JPA, atau
+
+versi project siap copy-paste untuk IntelliJ IDEA dalam satu folder class per class.
+
+Follow-ups
+
+saya mau contoh dengan database MySQL dan Spring Data JPA
+
+buatkan contoh project lengkap per class untuk IntelliJ IDEA
+
+saya ingin tutorial yang pakai JPA dan MySQL saja
+
+boleh dibuatkan contoh project lengkap siap pakai
+
+berikan contoh implementasi dengan MySQL dan JPA
+saya mau contoh dengan database MySQL dan Spring Data JPA
+Completed 2 steps
+Bisa, ini contoh paling umum: Spring Boot + GraphQL + MySQL + Spring Data JPA untuk entity Book. Spring Boot mendukung GraphQL lewat spring-boot-starter-graphql, schema disimpan di src/main/resources/graphql/**, resolver dibuat dengan @QueryMapping dan @MutationMapping, lalu persistence ditangani oleh Spring Data JPA.
+
+Dependencies
+Untuk project Maven, pakai dependency berikut:
+
+xml
+<project xmlns="http://maven.apache.org/POM/4.0.0">
+    <modelVersion>4.0.0</modelVersion>
+
+    <groupId>com.example</groupId>
+    <artifactId>graphql-mysql-demo</artifactId>
+    <version>0.0.1-SNAPSHOT</version>
+
+    <parent>
+        <groupId>org.springframework.boot</groupId>
+        <artifactId>spring-boot-starter-parent</artifactId>
+        <version>3.5.3</version>
+        <relativePath/>
+    </parent>
+
+    <properties>
+        <java.version>17</java.version>
+    </properties>
+
+    <dependencies>
+        <dependency>
+            <groupId>org.springframework.boot</groupId>
+            <artifactId>spring-boot-starter-graphql</artifactId>
+        </dependency>
+
+        <dependency>
+            <groupId>org.springframework.boot</groupId>
+            <artifactId>spring-boot-starter-web</artifactId>
+        </dependency>
+
+        <dependency>
+            <groupId>org.springframework.boot</groupId>
+            <artifactId>spring-boot-starter-data-jpa</artifactId>
+        </dependency>
+
+        <dependency>
+            <groupId>com.mysql</groupId>
+            <artifactId>mysql-connector-j</artifactId>
+            <scope>runtime</scope>
+        </dependency>
+
+        <dependency>
+            <groupId>org.springframework.boot</groupId>
+            <artifactId>spring-boot-starter-validation</artifactId>
+        </dependency>
+
+        <dependency>
+            <groupId>org.springframework.boot</groupId>
+            <artifactId>spring-boot-starter-test</artifactId>
+            <scope>test</scope>
+        </dependency>
+    </dependencies>
+</project>
+Untuk expose GraphQL via HTTP, Spring Boot butuh spring-boot-starter-graphql dan starter web; sedangkan untuk akses database relational dengan repository, gunakan Spring Data JPA dan connector MySQL.
+
+Struktur project:
+
+text
+src/main/java/com/example/graphqlmysql
+ ├─ GraphqlMysqlApplication.java
+ ├─ controller/BookController.java
+ ├─ entity/Book.java
+ ├─ input/BookInput.java
+ ├─ repository/BookRepository.java
+ └─ service/BookService.java
+
+src/main/resources
+ ├─ application.properties
+ └─ graphql/schema.graphqls
+Konfigurasi MySQL
+Buat database dulu, misalnya:
+
+sql
+CREATE DATABASE graphql_demo;
+Isi src/main/resources/application.properties:
+
+text
+spring.datasource.url=jdbc:mysql://localhost:3306/graphql_demo?useSSL=false&serverTimezone=Asia/Jakarta
+spring.datasource.username=root
+spring.datasource.password=123456
+spring.datasource.driver-class-name=com.mysql.cj.jdbc.Driver
+
+spring.jpa.hibernate.ddl-auto=update
+spring.jpa.show-sql=true
+spring.jpa.properties.hibernate.format_sql=true
+
+spring.graphql.graphiql.enabled=true
+GraphQL HTTP endpoint default ada di /graphql, dan GraphiQL bisa diaktifkan dengan spring.graphql.graphiql.enabled=true; untuk schema, Spring Boot otomatis membaca file .graphqls di folder resources/graphql.
+
+Catatan:
+
+ddl-auto=update cocok untuk belajar atau development.
+
+Untuk production, biasanya pakai migration seperti Flyway atau Liquibase, bukan update.
+
+Kode lengkap
+1. Main class
+java
+package com.example.graphqlmysql;
+
+import org.springframework.boot.SpringApplication;
+import org.springframework.boot.autoconfigure.SpringBootApplication;
+
+@SpringBootApplication
+public class GraphqlMysqlApplication {
+    public static void main(String[] args) {
+        SpringApplication.run(GraphqlMysqlApplication.class, args);
+    }
+}
+2. Entity Book
+java
+package com.example.graphqlmysql.entity;
+
+import jakarta.persistence.*;
+
+@Entity
+@Table(name = "books")
+public class Book {
+
+    @Id
+    @GeneratedValue(strategy = GenerationType.IDENTITY)
+    private Long id;
+
+    @Column(nullable = false)
+    private String title;
+
+    @Column(nullable = false)
+    private String author;
+
+    @Column(nullable = false)
+    private Double price;
+
+    public Book() {
+    }
+
+    public Book(Long id, String title, String author, Double price) {
+        this.id = id;
+        this.title = title;
+        this.author = author;
+        this.price = price;
+    }
+
+    public Long getId() {
+        return id;
+    }
+
+    public void setId(Long id) {
+        this.id = id;
+    }
+
+    public String getTitle() {
+        return title;
+    }
+
+    public void setTitle(String title) {
+        this.title = title;
+    }
+
+    public String getAuthor() {
+        return author;
+    }
+
+    public void setAuthor(String author) {
+        this.author = author;
+    }
+
+    public Double getPrice() {
+        return price;
+    }
+
+    public void setPrice(Double price) {
+        this.price = price;
+    }
+}
+3. Repository
+java
+package com.example.graphqlmysql.repository;
+
+import com.example.graphqlmysql.entity.Book;
+import org.springframework.data.jpa.repository.JpaRepository;
+
+public interface BookRepository extends JpaRepository<Book, Long> {
+}
+4. Input DTO
+GraphQL mutation biasanya lebih rapi kalau pakai input object, dan Spring GraphQL mendukung binding argument ke object Java melalui @Argument.
+
+java
+package com.example.graphqlmysql.input;
+
+import jakarta.validation.constraints.NotBlank;
+import jakarta.validation.constraints.NotNull;
+
+public class BookInput {
+
+    @NotBlank
+    private String title;
+
+    @NotBlank
+    private String author;
+
+    @NotNull
+    private Double price;
+
+    public BookInput() {
+    }
+
+    public String getTitle() {
+        return title;
+    }
+
+    public void setTitle(String title) {
+        this.title = title;
+    }
+
+    public String getAuthor() {
+        return author;
+    }
+
+    public void setAuthor(String author) {
+        this.author = author;
+    }
+
+    public Double getPrice() {
+        return price;
+    }
+
+    public void setPrice(Double price) {
+        this.price = price;
+    }
+}
+5. Service
+java
+package com.example.graphqlmysql.service;
+
+import com.example.graphqlmysql.entity.Book;
+import com.example.graphqlmysql.input.BookInput;
+import com.example.graphqlmysql.repository.BookRepository;
+import org.springframework.stereotype.Service;
+
+import java.util.List;
+
+@Service
+public class BookService {
+
+    private final BookRepository bookRepository;
+
+    public BookService(BookRepository bookRepository) {
+        this.bookRepository = bookRepository;
+    }
+
+    public List<Book> findAll() {
+        return bookRepository.findAll();
+    }
+
+    public Book findById(Long id) {
+        return bookRepository.findById(id).orElse(null);
+    }
+
+    public Book create(BookInput input) {
+        Book book = new Book();
+        book.setTitle(input.getTitle());
+        book.setAuthor(input.getAuthor());
+        book.setPrice(input.getPrice());
+        return bookRepository.save(book);
+    }
+
+    public Book update(Long id, BookInput input) {
+        Book book = bookRepository.findById(id)
+                .orElseThrow(() -> new RuntimeException("Book tidak ditemukan"));
+
+        book.setTitle(input.getTitle());
+        book.setAuthor(input.getAuthor());
+        book.setPrice(input.getPrice());
+
+        return bookRepository.save(book);
+    }
+
+    public Boolean delete(Long id) {
+        if (!bookRepository.existsById(id)) {
+            return false;
+        }
+        bookRepository.deleteById(id);
+        return true;
+    }
+}
+6. Controller GraphQL
+@QueryMapping adalah shortcut untuk field di type Query, dan @MutationMapping adalah shortcut untuk field di type Mutation. Spring Boot otomatis mendeteksi class @Controller dan mendaftarkan method-method itu sebagai DataFetcher.
+
+java
+package com.example.graphqlmysql.controller;
+
+import com.example.graphqlmysql.entity.Book;
+import com.example.graphqlmysql.input.BookInput;
+import com.example.graphqlmysql.service.BookService;
+import jakarta.validation.Valid;
+import org.springframework.graphql.data.method.annotation.Argument;
+import org.springframework.graphql.data.method.annotation.MutationMapping;
+import org.springframework.graphql.data.method.annotation.QueryMapping;
+import org.springframework.stereotype.Controller;
+
+import java.util.List;
+
+@Controller
+public class BookController {
+
+    private final BookService bookService;
+
+    public BookController(BookService bookService) {
+        this.bookService = bookService;
+    }
+
+    @QueryMapping
+    public List<Book> books() {
+        return bookService.findAll();
+    }
+
+    @QueryMapping
+    public Book bookById(@Argument Long id) {
+        return bookService.findById(id);
+    }
+
+    @MutationMapping
+    public Book createBook(@Argument @Valid BookInput input) {
+        return bookService.create(input);
+    }
+
+    @MutationMapping
+    public Book updateBook(@Argument Long id, @Argument @Valid BookInput input) {
+        return bookService.update(id, input);
+    }
+
+    @MutationMapping
+    public Boolean deleteBook(@Argument Long id) {
+        return bookService.delete(id);
+    }
+}
+7. Schema GraphQL
+Buat file src/main/resources/graphql/schema.graphqls:
+
+graphql
+type Query {
+    books: [Book!]!
+    bookById(id: ID!): Book
+}
+
+type Mutation {
+    createBook(input: BookInput!): Book!
+    updateBook(id: ID!, input: BookInput!): Book!
+    deleteBook(id: ID!): Boolean!
+}
+
+type Book {
+    id: ID!
+    title: String!
+    author: String!
+    price: Float!
+}
+
+input BookInput {
+    title: String!
+    author: String!
+    price: Float!
+}
+Schema harus tersedia saat startup aplikasi, dan nama field di schema harus cocok dengan resolver yang kamu buat.
+
+Cara test
+Jalankan aplikasi dari IntelliJ IDEA, lalu buka:
+
+http://localhost:8080/graphiql untuk UI testing.
+
+Tambah data
+graphql
+mutation {
+  createBook(input: {
+    title: "Spring Boot GraphQL"
+    author: "Bella Nasution"
+    price: 99000
+  }) {
+    id
+    title
+    author
+    price
+  }
+}
+Ambil semua data
+graphql
+query {
+  books {
+    id
+    title
+    author
+    price
+  }
+}
+Ambil berdasarkan id
+graphql
+query {
+  bookById(id: 1) {
+    id
+    title
+    author
+    price
+  }
+}
+Update data
+graphql
+mutation {
+  updateBook(
+    id: 1,
+    input: {
+      title: "Spring Boot GraphQL Updated"
+      author: "Bella"
+      price: 120000
+    }
+  ) {
+    id
+    title
+    author
+    price
+  }
+}
+Hapus data
+graphql
+mutation {
+  deleteBook(id: 1)
+}
+Penjelasan alur
+Alurnya sederhana:
+
+Client mengirim query atau mutation ke /graphql.
+
+Spring GraphQL mencocokkan field schema ke method @QueryMapping atau @MutationMapping.
+
+Method controller memanggil service.
+
+Service memanggil BookRepository dari Spring Data JPA untuk operasi ke MySQL.
+
+Hasil dikembalikan sebagai response GraphQL.
+
+Contoh mapping ini enak dipakai untuk skripsi atau project backend kecil karena lapisannya jelas: schema -> controller -> service -> repository -> database.
+
+Saran pengembangan
+Untuk project yang lebih rapi, kamu bisa tambah:
+
+findByTitleContainingIgnoreCase di repository untuk search.
+
+Exception handler GraphQL dengan @GraphQlExceptionHandler untuk error yang lebih bersih.
+
+Relasi tabel, misalnya Book dan Category, lalu resolver field tambahan dengan @SchemaMapping.
+
+Kalau kamu mau, saya bisa lanjut buatkan versi siap copy-paste satu project penuh dengan:
+
+package lengkap,
+
+pom.xml,
+
+semua class,
+
+dan SQL MySQL awal.
+
+saya mau contoh dengan database postgres dan Spring Data JPA
+Completed 2 steps
+Bisa, tinggal ganti koneksi database dan driver-nya ke PostgreSQL. Spring Boot tetap memakai starter GraphQL yang sama, schema tetap diletakkan di src/main/resources/graphql, dan akses database tetap enak lewat repository Spring Data JPA.
+
+Dependencies
+Contoh pom.xml untuk Spring Boot + GraphQL + PostgreSQL + Spring Data JPA:
+
+xml
+<project xmlns="http://maven.apache.org/POM/4.0.0">
+    <modelVersion>4.0.0</modelVersion>
+
+    <groupId>com.example</groupId>
+    <artifactId>graphql-postgres-demo</artifactId>
+    <version>0.0.1-SNAPSHOT</version>
+
+    <parent>
+        <groupId>org.springframework.boot</groupId>
+        <artifactId>spring-boot-starter-parent</artifactId>
+        <version>3.5.3</version>
+        <relativePath/>
+    </parent>
+
+    <properties>
+        <java.version>17</java.version>
+    </properties>
+
+    <dependencies>
+        <dependency>
+            <groupId>org.springframework.boot</groupId>
+            <artifactId>spring-boot-starter-graphql</artifactId>
+        </dependency>
+
+        <dependency>
+            <groupId>org.springframework.boot</groupId>
+            <artifactId>spring-boot-starter-web</artifactId>
+        </dependency>
+
+        <dependency>
+            <groupId>org.springframework.boot</groupId>
+            <artifactId>spring-boot-starter-data-jpa</artifactId>
+        </dependency>
+
+        <dependency>
+            <groupId>org.postgresql</groupId>
+            <artifactId>postgresql</artifactId>
+            <scope>runtime</scope>
+        </dependency>
+
+        <dependency>
+            <groupId>org.springframework.boot</groupId>
+            <artifactId>spring-boot-starter-validation</artifactId>
+        </dependency>
+
+        <dependency>
+            <groupId>org.springframework.boot</groupId>
+            <artifactId>spring-boot-starter-test</artifactId>
+            <scope>test</scope>
+        </dependency>
+    </dependencies>
+</project>
+Spring Boot menyediakan starter resmi untuk GraphQL, dan Spring Data JPA memang dirancang untuk mempermudah pembuatan data access layer berbasis JPA dengan boilerplate yang jauh lebih sedikit.
+
+Struktur project:
+
+text
+src/main/java/com/example/graphqlpostgres
+ ├─ GraphqlPostgresApplication.java
+ ├─ controller/BookController.java
+ ├─ entity/Book.java
+ ├─ input/BookInput.java
+ ├─ repository/BookRepository.java
+ └─ service/BookService.java
+
+src/main/resources
+ ├─ application.properties
+ └─ graphql/schema.graphqls
+Konfigurasi PostgreSQL
+Buat database dulu:
+
+sql
+CREATE DATABASE graphql_demo;
+Lalu isi application.properties:
+
+text
+spring.datasource.url=jdbc:postgresql://localhost:5432/graphql_demo
+spring.datasource.username=postgres
+spring.datasource.password=123456
+spring.datasource.driver-class-name=org.postgresql.Driver
+
+spring.jpa.hibernate.ddl-auto=update
+spring.jpa.show-sql=true
+spring.jpa.properties.hibernate.format_sql=true
+spring.jpa.properties.hibernate.dialect=org.hibernate.dialect.PostgreSQLDialect
+
+spring.graphql.graphiql.enabled=true
+Starter GraphQL Spring Boot dipakai untuk membangun aplikasi GraphQL, dan cara termudah menurut dokumentasi resminya adalah melalui Spring Initializr dengan dependency Spring for GraphQL; schema GraphQL tetap dibaca dari konfigurasi starter Spring Boot.
+
+Catatan:
+
+ddl-auto=update aman untuk latihan dan development.
+
+Untuk production, lebih baik pakai Flyway atau Liquibase.
+
+Kode lengkap
+1. Main class
+java
+package com.example.graphqlpostgres;
+
+import org.springframework.boot.SpringApplication;
+import org.springframework.boot.autoconfigure.SpringBootApplication;
+
+@SpringBootApplication
+public class GraphqlPostgresApplication {
+    public static void main(String[] args) {
+        SpringApplication.run(GraphqlPostgresApplication.class, args);
+    }
+}
+2. Entity Book
+java
+package com.example.graphqlpostgres.entity;
+
+import jakarta.persistence.*;
+
+@Entity
+@Table(name = "books")
+public class Book {
+
+    @Id
+    @GeneratedValue(strategy = GenerationType.IDENTITY)
+    private Long id;
+
+    @Column(nullable = false)
+    private String title;
+
+    @Column(nullable = false)
+    private String author;
+
+    @Column(nullable = false)
+    private Double price;
+
+    public Book() {
+    }
+
+    public Book(Long id, String title, String author, Double price) {
+        this.id = id;
+        this.title = title;
+        this.author = author;
+        this.price = price;
+    }
+
+    public Long getId() {
+        return id;
+    }
+
+    public void setId(Long id) {
+        this.id = id;
+    }
+
+    public String getTitle() {
+        return title;
+    }
+
+    public void setTitle(String title) {
+        this.title = title;
+    }
+
+    public String getAuthor() {
+        return author;
+    }
+
+    public void setAuthor(String author) {
+        this.author = author;
+    }
+
+    public Double getPrice() {
+        return price;
+    }
+
+    public void setPrice(Double price) {
+        this.price = price;
+    }
+}
+3. Repository
+java
+package com.example.graphqlpostgres.repository;
+
+import com.example.graphqlpostgres.entity.Book;
+import org.springframework.data.jpa.repository.JpaRepository;
+
+public interface BookRepository extends JpaRepository<Book, Long> {
+}
+4. Input DTO
+java
+package com.example.graphqlpostgres.input;
+
+import jakarta.validation.constraints.NotBlank;
+import jakarta.validation.constraints.NotNull;
+
+public class BookInput {
+
+    @NotBlank
+    private String title;
+
+    @NotBlank
+    private String author;
+
+    @NotNull
+    private Double price;
+
+    public BookInput() {
+    }
+
+    public String getTitle() {
+        return title;
+    }
+
+    public void setTitle(String title) {
+        this.title = title;
+    }
+
+    public String getAuthor() {
+        return author;
+    }
+
+    public void setAuthor(String author) {
+        this.author = author;
+    }
+
+    public Double getPrice() {
+        return price;
+    }
+
+    public void setPrice(Double price) {
+        this.price = price;
+    }
+}
+5. Service
+java
+package com.example.graphqlpostgres.service;
+
+import com.example.graphqlpostgres.entity.Book;
+import com.example.graphqlpostgres.input.BookInput;
+import com.example.graphqlpostgres.repository.BookRepository;
+import org.springframework.stereotype.Service;
+
+import java.util.List;
+
+@Service
+public class BookService {
+
+    private final BookRepository bookRepository;
+
+    public BookService(BookRepository bookRepository) {
+        this.bookRepository = bookRepository;
+    }
+
+    public List<Book> findAll() {
+        return bookRepository.findAll();
+    }
+
+    public Book findById(Long id) {
+        return bookRepository.findById(id).orElse(null);
+    }
+
+    public Book create(BookInput input) {
+        Book book = new Book();
+        book.setTitle(input.getTitle());
+        book.setAuthor(input.getAuthor());
+        book.setPrice(input.getPrice());
+        return bookRepository.save(book);
+    }
+
+    public Book update(Long id, BookInput input) {
+        Book book = bookRepository.findById(id)
+                .orElseThrow(() -> new RuntimeException("Book tidak ditemukan"));
+
+        book.setTitle(input.getTitle());
+        book.setAuthor(input.getAuthor());
+        book.setPrice(input.getPrice());
+
+        return bookRepository.save(book);
+    }
+
+    public Boolean delete(Long id) {
+        if (!bookRepository.existsById(id)) {
+            return false;
+        }
+        bookRepository.deleteById(id);
+        return true;
+    }
+}
+6. GraphQL Controller
+Repository Spring Data JPA bisa dibuat cukup dengan interface, lalu Spring akan melakukan wiring otomatis; untuk GraphQL, method controller bisa dipetakan ke schema dengan anotasi seperti @QueryMapping dan @MutationMapping.
+
+java
+package com.example.graphqlpostgres.controller;
+
+import com.example.graphqlpostgres.entity.Book;
+import com.example.graphqlpostgres.input.BookInput;
+import com.example.graphqlpostgres.service.BookService;
+import jakarta.validation.Valid;
+import org.springframework.graphql.data.method.annotation.Argument;
+import org.springframework.graphql.data.method.annotation.MutationMapping;
+import org.springframework.graphql.data.method.annotation.QueryMapping;
+import org.springframework.stereotype.Controller;
+
+import java.util.List;
+
+@Controller
+public class BookController {
+
+    private final BookService bookService;
+
+    public BookController(BookService bookService) {
+        this.bookService = bookService;
+    }
+
+    @QueryMapping
+    public List<Book> books() {
+        return bookService.findAll();
+    }
+
+    @QueryMapping
+    public Book bookById(@Argument Long id) {
+        return bookService.findById(id);
+    }
+
+    @MutationMapping
+    public Book createBook(@Argument @Valid BookInput input) {
+        return bookService.create(input);
+    }
+
+    @MutationMapping
+    public Book updateBook(@Argument Long id, @Argument @Valid BookInput input) {
+        return bookService.update(id, input);
+    }
+
+    @MutationMapping
+    public Boolean deleteBook(@Argument Long id) {
+        return bookService.delete(id);
+    }
+}
+7. Schema GraphQL
+Buat file src/main/resources/graphql/schema.graphqls:
+
+graphql
+type Query {
+    books: [Book!]!
+    bookById(id: ID!): Book
+}
+
+type Mutation {
+    createBook(input: BookInput!): Book!
+    updateBook(id: ID!, input: BookInput!): Book!
+    deleteBook(id: ID!): Boolean!
+}
+
+type Book {
+    id: ID!
+    title: String!
+    author: String!
+    price: Float!
+}
+
+input BookInput {
+    title: String!
+    author: String!
+    price: Float!
+}
+Spring Boot akan mendeteksi schema GraphQL dari classpath resources untuk dipakai oleh starter GraphQL.
+
+Testing query
+Setelah aplikasi dijalankan, kamu bisa test lewat GraphiQL di /graphiql jika properti GraphiQL sudah diaktifkan.
+
+Insert data
+graphql
+mutation {
+  createBook(input: {
+    title: "GraphQL dengan PostgreSQL"
+    author: "Bella Nasution"
+    price: 150000
+  }) {
+    id
+    title
+    author
+    price
+  }
+}
+Ambil semua data
+graphql
+query {
+  books {
+    id
+    title
+    author
+    price
+  }
+}
+Ambil satu data
+graphql
+query {
+  bookById(id: 1) {
+    id
+    title
+    author
+    price
+  }
+}
+Update
+graphql
+mutation {
+  updateBook(
+    id: 1,
+    input: {
+      title: "GraphQL PostgreSQL Update"
+      author: "Bella"
+      price: 175000
+    }
+  ) {
+    id
+    title
+    author
+    price
+  }
+}
+Delete
+graphql
+mutation {
+  deleteBook(id: 1)
+}
+Perbedaan dari MySQL
+Secara struktur Java, hampir tidak ada perbedaan antara MySQL dan PostgreSQL dalam Spring Data JPA; yang berubah terutama adalah dependency driver, JDBC URL, username/password, dan dialect Hibernate. Spring Data JPA tetap memakai pola repository yang sama untuk kedua database tersebut.
+
+Kalau kamu mau, saya bisa lanjut buatkan versi project lengkap siap import ke IntelliJ IDEA untuk PostgreSQL, termasuk:
+
+pom.xml,
+
+semua file .java,
+
+schema.graphqls,
+
+application.properties,
+
+dan contoh SQL seed data.
+
+buatkan query inner join pada graphql
+Completed 2 steps
+Di GraphQL, konsep “inner join” biasanya tidak ditulis seperti SQL INNER JOIN langsung di query GraphQL umum. Yang dilakukan adalah membuat relasi antar-entity di JPA, lalu di GraphQL kamu ambil data bertingkat, misalnya books { author { ... } }, dan resolver @SchemaMapping akan mengambil data relasinya.
+
+Konsep join
+Pada Spring for GraphQL, field di schema bisa dipetakan dengan @SchemaMapping, sehingga field turunan seperti Book.author dapat di-resolve dari object parent Book. @QueryMapping dan @MutationMapping sendiri hanyalah shortcut dari @SchemaMapping untuk type Query dan Mutation.
+
+Jadi kalau di SQL kamu membayangkan:
+
+sql
+SELECT b.id, b.title, a.name
+FROM books b
+INNER JOIN authors a ON b.author_id = a.id;
+Di GraphQL bentuknya biasanya seperti ini:
+
+graphql
+query {
+  books {
+    id
+    title
+    author {
+      id
+      name
+    }
+  }
+}
+GraphQL client meminta data relasi sebagai nested field, bukan menulis sintaks INNER JOIN di query-nya.
+
+Contoh relasi JPA
+Misalnya kita punya 2 tabel:
+
+authors
+
+books
+
+Satu author punya banyak book, dan satu book punya satu author.
+
+Entity Author
+java
+package com.example.graphqlpostgres.entity;
+
+import jakarta.persistence.*;
+import java.util.List;
+
+@Entity
+@Table(name = "authors")
+public class Author {
+
+    @Id
+    @GeneratedValue(strategy = GenerationType.IDENTITY)
+    private Long id;
+
+    @Column(nullable = false)
+    private String name;
+
+    @OneToMany(mappedBy = "author")
+    private List<Book> books;
+
+    public Author() {
+    }
+
+    public Author(Long id, String name, List<Book> books) {
+        this.id = id;
+        this.name = name;
+        this.books = books;
+    }
+
+    public Long getId() {
+        return id;
+    }
+
+    public String getName() {
+        return name;
+    }
+
+    public List<Book> getBooks() {
+        return books;
+    }
+
+    public void setId(Long id) {
+        this.id = id;
+    }
+
+    public void setName(String name) {
+        this.name = name;
+    }
+
+    public void setBooks(List<Book> books) {
+        this.books = books;
+    }
+}
+Entity Book
+java
+package com.example.graphqlpostgres.entity;
+
+import jakarta.persistence.*;
+
+@Entity
+@Table(name = "books")
+public class Book {
+
+    @Id
+    @GeneratedValue(strategy = GenerationType.IDENTITY)
+    private Long id;
+
+    @Column(nullable = false)
+    private String title;
+
+    @ManyToOne
+    @JoinColumn(name = "author_id", nullable = false)
+    private Author author;
+
+    public Book() {
+    }
+
+    public Book(Long id, String title, Author author) {
+        this.id = id;
+        this.title = title;
+        this.author = author;
+    }
+
+    public Long getId() {
+        return id;
+    }
+
+    public String getTitle() {
+        return title;
+    }
+
+    public Author getAuthor() {
+        return author;
+    }
+
+    public void setId(Long id) {
+        this.id = id;
+    }
+
+    public void setTitle(String title) {
+        this.title = title;
+    }
+
+    public void setAuthor(Author author) {
+        this.author = author;
+    }
+}
+Schema GraphQL
+Buat file schema.graphqls:
+
+graphql
+type Query {
+    books: [Book!]!
+    authors: [Author!]!
+}
+
+type Book {
+    id: ID!
+    title: String!
+    author: Author!
+}
+
+type Author {
+    id: ID!
+    name: String!
+    books: [Book!]!
+}
+Dengan schema seperti ini, nested field seperti author pada Book dan books pada Author bisa diisi lewat resolver field.
+
+Resolver GraphQL
+Repository
+java
+package com.example.graphqlpostgres.repository;
+
+import com.example.graphqlpostgres.entity.Author;
+import com.example.graphqlpostgres.entity.Book;
+import org.springframework.data.jpa.repository.JpaRepository;
+
+import java.util.List;
+
+public interface AuthorRepository extends JpaRepository<Author, Long> {
+}
+
+public interface BookRepository extends JpaRepository<Book, Long> {
+    List<Book> findByAuthorId(Long authorId);
+}
+Controller
+java
+package com.example.graphqlpostgres.controller;
+
+import com.example.graphqlpostgres.entity.Author;
+import com.example.graphqlpostgres.entity.Book;
+import com.example.graphqlpostgres.repository.AuthorRepository;
+import com.example.graphqlpostgres.repository.BookRepository;
+import org.springframework.graphql.data.method.annotation.QueryMapping;
+import org.springframework.graphql.data.method.annotation.SchemaMapping;
+import org.springframework.stereotype.Controller;
+
+import java.util.List;
+
+@Controller
+public class LibraryController {
+
+    private final BookRepository bookRepository;
+    private final AuthorRepository authorRepository;
+
+    public LibraryController(BookRepository bookRepository, AuthorRepository authorRepository) {
+        this.bookRepository = bookRepository;
+        this.authorRepository = authorRepository;
+    }
+
+    @QueryMapping
+    public List<Book> books() {
+        return bookRepository.findAll();
+    }
+
+    @QueryMapping
+    public List<Author> authors() {
+        return authorRepository.findAll();
+    }
+
+    @SchemaMapping
+    public Author author(Book book) {
+        return book.getAuthor();
+    }
+
+    @SchemaMapping
+    public List<Book> books(Author author) {
+        return bookRepository.findByAuthorId(author.getId());
+    }
+}
+@SchemaMapping memang dipakai untuk memetakan method ke field pada type tertentu, dan source object parent bisa langsung diterima sebagai parameter method, misalnya author(Book book).
+
+Query yang mirip inner join
+1. Ambil books beserta author
+Ini yang paling mirip hasil INNER JOIN:
+
+graphql
+query {
+  books {
+    id
+    title
+    author {
+      id
+      name
+    }
+  }
+}
+Contoh hasil:
+
+json
+{
+  "data": {
+    "books": [
+      {
+        "id": "1",
+        "title": "Belajar GraphQL",
+        "author": {
+          "id": "10",
+          "name": "Bella Nasution"
+        }
+      }
+    ]
+  }
+}
+2. Ambil authors beserta books
+graphql
+query {
+  authors {
+    id
+    name
+    books {
+      id
+      title
+    }
+  }
+}
+Kalau mau benar-benar pakai JPQL join
+Kalau kamu ingin query database-nya eksplisit seperti inner join, buat custom query di repository. Spring Data JPA menyimpan entity dengan repository dan memanfaatkan EntityManager di belakang layar, sehingga custom query juga bisa dipakai saat perlu kontrol lebih spesifik.
+
+Contoh:
+
+java
+package com.example.graphqlpostgres.repository;
+
+import com.example.graphqlpostgres.entity.Book;
+import org.springframework.data.jpa.repository.JpaRepository;
+import org.springframework.data.jpa.repository.Query;
+
+import java.util.List;
+
+public interface BookRepository extends JpaRepository<Book, Long> {
+
+    @Query("SELECT b FROM Book b INNER JOIN b.author a")
+    List<Book> findAllWithAuthor();
+}
+Lalu di controller:
+
+java
+@QueryMapping
+public List<Book> books() {
+    return bookRepository.findAllWithAuthor();
+}
+Kalau mau filter author tertentu:
+
+java
+@Query("SELECT b FROM Book b INNER JOIN b.author a WHERE a.name = :name")
+List<Book> findBooksByAuthorName(String name);
+Dan query GraphQL-nya:
+
+graphql
+query {
+  books {
+    id
+    title
+    author {
+      name
+    }
+  }
+}
+Bentuk SQL tabel
+Sebagai gambaran, tabel PostgreSQL bisa seperti ini:
+
+sql
+CREATE TABLE authors (
+    id BIGSERIAL PRIMARY KEY,
+    name VARCHAR(255) NOT NULL
+);
+
+CREATE TABLE books (
+    id BIGSERIAL PRIMARY KEY,
+    title VARCHAR(255) NOT NULL,
+    author_id BIGINT NOT NULL,
+    CONSTRAINT fk_book_author
+        FOREIGN KEY (author_id)
+        REFERENCES authors(id)
+);
+Dengan foreign key seperti itu, setiap books.author_id harus mengarah ke authors.id, sehingga secara praktik relasi ini mendukung hasil seperti inner join ketika data author diminta bersama book.
+
+Catatan penting
+GraphQL standar tidak punya keyword INNER JOIN seperti SQL; pola umumnya adalah:
+
+definisikan relasi di entity JPA,
+
+buat field relasi di schema,
+
+ambil nested field lewat query GraphQL,
+
+dan bila perlu optimalkan pengambilan data lewat @SchemaMapping atau @BatchMapping.
+
+Kalau kamu mau, saya bisa buatkan contoh project lengkap Spring Boot + PostgreSQL + GraphQL + relasi Author-Book yang siap copy ke IntelliJ IDEA.
+
+Follow-ups
+
+Ya, buatkan contoh project lengkapnya saja
+
+Boleh, saya ingin lihat contoh @BatchMapping juga
+
+Tolong buatkan contohnya tanpa @SchemaMapping manual
+
+Ya, sekalian contoh query mutasi untuk relasinya
+
+Oke, boleh saya minta struktur file projectnya
