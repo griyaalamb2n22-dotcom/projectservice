@@ -1,0 +1,15 @@
+sc.exe create "WorkRFtoMSA" binPath= "C:\Services\workrftomsa\workrftomsa.exe" start= auto DisplayName= "Work RF to MSA"
+
+Jalankan service
+Setelah berhasil dibuat, start service dengan sc.exe start atau lewat klik kanan di services.msc; New-Service PowerShell juga bisa dipakai, tetapi sc.exe adalah pola yang paling umum untuk Worker Service Windows.
+
+text
+sc.exe start "WorkRFtoMSA"
+Untuk memastikan service sudah masuk, buka services.msc, tekan Refresh, lalu cari nama WorkRFtoMSA; jika benar, service akan tampil di list seperti pada screenshot Anda.
+
+Jika perlu update
+Kalau Anda publish ulang ke path yang sama, biasanya cukup sc.exe stop, replace file publish, lalu sc.exe start lagi; kalau nama service atau path berubah, hapus dulu service lama lalu buat ulang.
+
+text
+sc.exe stop "WorkRFtoMSA"
+sc.exe delete "WorkRFtoMSA"
