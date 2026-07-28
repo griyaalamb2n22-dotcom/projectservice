@@ -1,0 +1,111 @@
+CREATE PROCEDURE usp_MigrateClientData_Client
+    @MaxDOP INT = 8
+AS
+BEGIN
+    SET NOCOUNT ON;
+    SET XACT_ABORT ON;
+    SET TRANSACTION ISOLATION LEVEL READ UNCOMMITTED;
+
+    DECLARE @StartTime DATETIME = GETDATE();
+    DECLARE @StepTime  DATETIME;
+    DECLARE @ErrorMessage NVARCHAR(4000);
+
+    BEGIN TRY
+        ------------------------------------------------
+        -- 1. TRUNCATE & LOAD STAGING SI_TCLI_SF
+        ------------------------------------------------
+        PRINT 'Phase 1: Refresh staging SI_TCLI_SF...';
+        SET @StepTime = GETDATE();
+
+        TRUNCATE TABLE SI_TCLI_SF;
+
+        INSERT INTO SI_TCLI_SF WITH (TABLOCKX)
+        (
+            CO_ID,
+            CLI_ID,
+            CLI_BTH_DT,
+            CLI_ID_TYP_CD,
+            CLI_ID_TXT
+        )
+        SELECT
+            CO_ID,
+            CLI_ID,
+            CLI_BTH_DT,
+            CLI_ID_TYP_CD,
+            CLI_ID_TXT
+        FROM OPENQUERY([UDING602_SV80621], 
+            'SELECT CO_ID, CLI_ID, CLI_BTH_DT, CLI_ID_TYP_CD, CLI_ID_TXT 
+             FROM UDING602.TCLI WITH UR')
+        OPTION (MAXDOP 8, RECOMPILE);
+
+        PRINT 'Staging SI_TCLI_SF loaded in '
+              + CAST(DATEDIFF(ms, @StepTime, GETDATE()) AS VARCHAR(20)) + ' ms';
+
+        ------------------------------------------------
+        -- 2. UPDATE DWM_CLIENT_SF DARI STAGING SI_TCLI_SF
+        ------------------------------------------------
+        PRINT 'Phase 2: Updating DWM_CLIENT_SF from SI_TCLI_SF...';
+        SET @StepTime = GETDATE();
+
+        -- Asumsi key di DWM_CLIENT_SF = (CO_ID, CLI_ID)
+        UPDATE  D
+        SET
+            D.CLI_BTH_DT    = S.CLI_BTH_DT,
+            D.CLI_ID_TYP_CD = S.CLI_ID_TYP_CD,
+            D.CLI_ID_TXT    = S.CLI_ID_TXT
+        FROM DWM_CLIENT_SF AS D
+        JOIN SI_TCLI_SF   AS S
+            ON  D.CO_ID  = S.CO_ID
+            AND D.CLI_ID = S.CLI_ID;
+
+        PRINT 'Update DWM_CLIENT_SF completed in '
+              + CAST(DATEDIFF(ms, @StepTime, GETDATE()) AS VARCHAR(20)) + ' ms';
+
+        ------------------------------------------------
+        -- 3. INSERT CLIENT BARU YANG BELUM ADA DI DWM_CLIENT_SF
+        ------------------------------------------------
+        PRINT 'Phase 3: Insert new clients into DWM_CLIENT_SF...';
+        SET @StepTime = GETDATE();
+
+        INSERT INTO DWM_CLIENT_SF WITH (TABLOCK)
+        (
+            CO_ID,
+            CLI_ID,
+            CLI_BTH_DT,
+            CLI_ID_TYP_CD,
+            CLI_ID_TXT
+        )
+        SELECT
+            S.CO_ID,
+            S.CLI_ID,
+            S.CLI_BTH_DT,
+            S.CLI_ID_TYP_CD,
+            S.CLI_ID_TXT
+        FROM SI_TCLI_SF AS S
+        LEFT JOIN DWM_CLIENT_SF AS D
+            ON  D.CO_ID  = S.CO_ID
+            AND D.CLI_ID = S.CLI_ID
+        WHERE D.CLI_ID IS NULL;  -- hanya client baru
+
+        PRINT 'Insert new clients completed in '
+              + CAST(DATEDIFF(ms, @StepTime, GETDATE()) AS VARCHAR(20)) + ' ms';
+
+        ------------------------------------------------
+        -- 4. SUMMARY
+        ------------------------------------------------
+        DECLARE @TotalDuration INT = DATEDIFF(SECOND, @StartTime, GETDATE());
+
+        PRINT '========================================';
+        PRINT 'usp_MigrateClientData_Client COMPLETED';
+        PRINT 'Total Duration: ' + CAST(@TotalDuration AS VARCHAR(10)) + ' seconds';
+        PRINT '========================================';
+
+    END TRY
+    BEGIN CATCH
+        SET @ErrorMessage = ERROR_MESSAGE();
+        PRINT 'ERROR: ' + @ErrorMessage;
+        RAISERROR('Migration failed: %s', 16, 1, @ErrorMessage);
+        -- atau: THROW;
+    END CATCH
+END
+GO
