@@ -1,0 +1,11 @@
+<!-- SEBELUM (error) -->
+<strong>{{ ic.birthDate ? (Math.floor((new Date().getTime() - new Date(ic.birthDate).getTime()) / 31557600000)) : '-' }}</strong>
+
+<!-- SESUDAH (perbaikan) -->
+<strong>{{ calculateAge(ic.birthDate) }}</strong>
+
+calculateAge(birthDate: string | undefined | null): number | string {
+  if (!birthDate) return '-';
+  const diffMs = new Date().getTime() - new Date(birthDate).getTime();
+  return Math.floor(diffMs / 31557600000);
+}
