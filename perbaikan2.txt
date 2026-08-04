@@ -1,0 +1,60 @@
+[HttpGet("agent")]
+public async Task<IActionResult> GetAgentInfo([FromQuery] string memberID, [FromQuery] string companyID, [FromQuery] string policyID)
+{
+    try
+    {
+        var result = await _repo.GetAgentInfoAsync(memberID, companyID, policyID);
+        return Ok(result);
+    }
+    catch (Exception ex)
+    {
+        return StatusCode(500, new { message = ex.Message });
+    }
+}
+
+
+
+public async Task<AgentInfo?> GetAgentInfoAsync(string memberID, string companyID, string policyID)
+{
+    const string sql = @"
+        SELECT ca.AgentID, x.AgentName, ca.BranchID,
+               x.BranchName, x.MainBranchName, x.AreaName, x.CredamName,
+               ca.CaseSharing
+        FROM tcertificate_agent ca
+        LEFT JOIN vAgentList x
+            ON ca.AgentID = x.AgentID
+        WHERE ca.MemberID = @MemberID
+          AND ca.CompanyID = @CompanyID
+          AND x.PolicyId = @PolicyID";
+
+    using var conn = GetConnection();
+    return await conn.QueryFirstOrDefaultAsync<AgentInfo>(sql, new
+    {
+        MemberID = memberID,
+        CompanyID = companyID,
+        PolicyID = policyID
+    });
+}
+
+
+
+service angular
+
+getAgentInfo(memberID: string, companyID: string, policyID: string): Observable<AgentInfo> {
+  return this.http.get<AgentInfo>(`${this.baseUrl}/agent`, { params: { memberID, companyID, policyID } });
+}
+
+case 'clientAgent':
+  if (!this.insuredClient() && h.insuredID) {
+    this.svc.getClientInfo(h.insuredID).subscribe(d => this.insuredClient.set(d));
+  }
+  if (!this.debiturClient() && h.debiturID) {
+    this.svc.getClientInfo(h.debiturID).subscribe(d => this.debiturClient.set(d));
+  }
+  if (!this.agent() && h.companyID && h.policyID) {
+    this.svc.getAgentInfo(memberID, h.companyID, h.policyID).subscribe({
+      next: d => this.agent.set(d),
+      error: err => console.error('Agent info error:', err)
+    });
+  }
+  break;
